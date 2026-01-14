@@ -3,6 +3,7 @@ import Header from './components/Header';
 import FileUploader from './components/FileUploader';
 import VideoPreview from './components/VideoPreview';
 import SummaryResult from './components/SummaryResult';
+import ExampleCarousel from './components/ExampleCarousel';
 import { VideoFile, ProcessingStatus } from './types';
 import { summarizeVideo } from './services/gemini';
 import { compressVideo } from './services/compression';
@@ -163,7 +164,7 @@ const App: React.FC = () => {
                 <div className="max-w-md space-y-6">
                     <p className="font-light text-neutral-400 text-lg leading-relaxed">
                         A <span className="text-white border-b border-accent/50 pb-0.5">hermeneutic engine</span> for the post-digital archive. 
-                        We employ multimodal AI to parse video streams into semantic narratives, 
+                        Employs multimodal AI to parse video streams into semantic narratives, 
                         decoding the syntax of both audio and visual context.
                     </p>
                     
@@ -172,6 +173,15 @@ const App: React.FC = () => {
                         <span>[ VISUAL_SYNTAX ]</span>
                         <span>[ NARRATIVE_STRUCTURE ]</span>
                     </div>
+                </div>
+
+                {/* Example Showcase - New Section */}
+                <div className="pt-6 w-full max-w-lg">
+                    <p className="font-mono text-[10px] text-neutral-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-accent/50 rounded-full"></span>
+                        Analysis_Output_Examples
+                    </p>
+                    <ExampleCarousel />
                 </div>
             </div>
 
