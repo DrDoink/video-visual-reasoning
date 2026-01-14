@@ -38,10 +38,11 @@ export const summarizeVideo = async (
       *   **💬 Dialogue**: [Key quotes, arguments, or detailed summary of what was said]
       *   **👁️ Visual Context**: Describe the visual scene, text on screen, actions, or environment that accompanies the audio.
 
-      ## 🗝️ Key Takeaways
-      *   [Key Point 1]
-      *   [Key Point 2]
-      *   [Key Point 3]
+      ## 🗝️ Critical Analysis & Takeaways
+      Provide 4-5 distinctive, high-level insights. Focus on semiotics, recurring motifs, production choices, or hidden details.
+      *   **[CONCEPT_OR_MOTIF_NAME]**: [Deep dive analysis of this specific element. Connect visual cues to deeper meanings.]
+      *   **[ANOTHER_KEY_THEME]**: [Analysis of a contradiction or reinforcement between audio and video.]
+      *   (Continue for 4-5 points)
     `;
 
     if (onProgress) onProgress('Sending video to Gemini (this may take a moment)...');
@@ -63,7 +64,7 @@ export const summarizeVideo = async (
       },
       config: {
         temperature: 0.4, // Lower temperature for more factual observation
-        maxOutputTokens: 4096, // Increased for detailed breakdowns
+        maxOutputTokens: 8192, // Increased for detailed breakdowns and expanded takeaways
       }
     });
 

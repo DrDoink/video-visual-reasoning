@@ -1,11 +1,12 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Copy, Check, Headphones, Square, Play, Image as ImageIcon, Loader2, X, Quote, User, Activity } from 'lucide-react';
+import { Copy, Check, Headphones, Square, Play, Image as ImageIcon, Loader2, X, Quote, User, Activity, Sparkles, Lightbulb, Zap } from 'lucide-react';
 import { jsPDF } from "jspdf";
-import { generateThumbnail, generateAudioReview } from '../services/gemini';
+import { generateAudioReview } from '../services/gemini';
 
 interface SummaryResultProps {
   summary: string;
+  videoUrl: string;
 }
 
 interface TimelineSegmentData {
@@ -16,6 +17,11 @@ interface TimelineSegmentData {
   sentiment: string;
   dialogue: string;
   visualContext: string;
+}
+
+interface InsightData {
+  title: string;
+  content: string;
 }
 
 // Helper to decode base64 string
@@ -29,52 +35,127 @@ function decodeBase64(base64: string) {
   return bytes;
 }
 
-const TimelineSegment: React.FC<{ segment: TimelineSegmentData; id: string }> = ({ segment, id }) => {
+// Helper: Parse MM:SS or HH:MM:SS to seconds
+const parseTimestamp = (timestamp: string): number => {
+  if (!timestamp) return 0;
+  // Clean timestamp of brackets if present e.g. [01:30]
+  const clean = timestamp.replace(/[\[\]]/g, '');
+  const parts = clean.split(':').map(part => parseInt(part, 10));
+  
+  if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  return 0;
+};
+
+// Helper: Extract frame from video URL at specific time
+const extractFrame = async (videoUrl: string, time: number): Promise<string | null> => {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.src = videoUrl;
+    video.preload = 'metadata'; // Ensure we get metadata to seek
+    
+    // Safety timeout
+    const timeout = setTimeout(() => {
+        resolve(null);
+    }, 4000);
+
+    const onSeeked = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.drawImage(video, 0, 0);
+            try {
+                const data = canvas.toDataURL('image/jpeg', 0.85);
+                clearTimeout(timeout);
+                resolve(data);
+            } catch (e) {
+                console.error("Frame capture error", e);
+                resolve(null);
+            }
+        } else {
+            resolve(null);
+        }
+        // Cleanup refs
+        video.src = ""; 
+        video.remove();
+    };
+
+    video.onloadedmetadata = () => {
+        // Clamp time to duration
+        const safeTime = Math.min(time, video.duration - 0.1); 
+        video.currentTime = safeTime;
+    };
+    
+    video.onseeked = onSeeked;
+    
+    video.onerror = (e) => {
+        console.error("Video error during frame extraction", e);
+        clearTimeout(timeout);
+        resolve(null);
+    }
+  });
+};
+
+const TimelineSegment: React.FC<{ segment: TimelineSegmentData; id: string; videoUrl: string; isHighlighted?: boolean }> = ({ segment, id, videoUrl, isHighlighted }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
-    const fetchImage = async () => {
-      // If no visual context or it's just "N/A" or too short, skip generation to save API calls/time
-      if (!segment.visualContext || segment.visualContext.length < 5 || segment.visualContext.toLowerCase().includes('n/a')) return;
+    const fetchFrame = async () => {
+      // Don't extract if no timestamp is present or it's 00:00 (unless it's the start, but let's avoid duplicates)
+      if (!segment.timestamp) return;
       
       setLoading(true);
       try {
-        const url = await generateThumbnail(segment.visualContext);
+        const seconds = parseTimestamp(segment.timestamp);
+        const url = await extractFrame(videoUrl, seconds);
         if (isMounted && url) {
           setImageUrl(url);
         }
       } catch (err) {
-        console.error("Failed to load thumbnail", err);
+        console.error("Failed to extract frame", err);
       } finally {
         if (isMounted) setLoading(false);
       }
     };
 
-    fetchImage();
+    fetchFrame();
 
     return () => { isMounted = false; };
-  }, [segment.visualContext]);
+  }, [segment.timestamp, videoUrl]);
 
   return (
-    <div id={id} className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-8 mb-16 border-l border-white/10 pl-8 relative scroll-mt-32 group">
+    <div 
+        id={id} 
+        className={`grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-8 mb-16 pl-8 relative scroll-mt-32 group transition-all duration-700 ease-out ${isHighlighted ? 'border-l border-accent bg-accent/5' : 'border-l border-white/10'}`}
+    >
        {/* Timeline Node */}
-       <div className="absolute -left-[5px] top-1 w-[9px] h-[9px] bg-neutral-800 border border-neutral-600 rounded-full group-hover:bg-accent group-hover:border-accent transition-colors duration-300"></div>
+       <div className={`absolute -left-[5px] top-1 w-[9px] h-[9px] rounded-full border transition-all duration-500 ${isHighlighted ? 'bg-accent border-accent shadow-[0_0_15px_rgba(255,198,0,0.6)] scale-125' : 'bg-neutral-800 border-neutral-600 group-hover:bg-accent group-hover:border-accent'}`}></div>
 
        {/* Text Content */}
        <div className="space-y-6">
           {/* Header */}
           <div className="flex flex-col gap-1">
              <div className="flex items-center gap-3">
-                <span className="font-mono text-accent text-xs tracking-wider bg-accent/10 px-1.5 py-0.5 rounded">{segment.timestamp}</span>
+                <span className={`font-mono text-xs tracking-wider px-1.5 py-0.5 rounded transition-colors duration-500 ${isHighlighted ? 'bg-accent text-black' : 'bg-accent/10 text-accent'}`}>
+                    {segment.timestamp}
+                </span>
              </div>
              <h3 className="font-serif text-xl text-white italic leading-tight mt-2">{segment.title}</h3>
           </div>
 
           {/* Speaker & Sentiment Meta */}
-          <div className="flex flex-wrap gap-y-2 gap-x-6 py-3 border-y border-white/5">
+          <div className={`flex flex-wrap gap-y-2 gap-x-6 py-3 border-y transition-colors duration-500 ${isHighlighted ? 'border-accent/20' : 'border-white/5'}`}>
               {segment.speaker && (
                   <div className="flex items-center gap-2">
                       <User size={12} className="text-neutral-500" />
@@ -94,7 +175,7 @@ const TimelineSegment: React.FC<{ segment: TimelineSegmentData; id: string }> = 
           {/* Dialogue / Content */}
           <div className="relative">
              <Quote size={24} className="absolute -left-4 -top-2 text-white/5" />
-             <div className="relative pl-4 border-l-2 border-accent/30">
+             <div className={`relative pl-4 border-l-2 transition-colors duration-500 ${isHighlighted ? 'border-accent' : 'border-accent/30'}`}>
                 <p className="font-serif text-lg text-neutral-300 leading-relaxed italic opacity-90">
                    "{segment.dialogue}"
                 </p>
@@ -117,39 +198,42 @@ const TimelineSegment: React.FC<{ segment: TimelineSegmentData; id: string }> = 
           {loading ? (
              <div className="w-full aspect-video bg-neutral-900 border border-neutral-800 flex flex-col items-center justify-center gap-3 animate-pulse">
                 <Loader2 size={24} className="text-neutral-600 animate-spin" />
-                <span className="font-mono text-[8px] text-neutral-600 uppercase tracking-widest">Generating_Keyframe</span>
+                <span className="font-mono text-[8px] text-neutral-600 uppercase tracking-widest">Extracting_Frame</span>
              </div>
           ) : imageUrl ? (
              <div className="w-full group/image relative corner-brackets p-1">
-                <div className="absolute -top-2 left-0 bg-[#050505] px-2 font-mono text-[8px] text-accent uppercase tracking-widest z-10">
-                   AI_Visualization
+                <div className={`absolute -top-2 left-0 px-2 font-mono text-[8px] uppercase tracking-widest z-10 transition-colors duration-500 ${isHighlighted ? 'bg-accent text-black' : 'bg-[#050505] text-accent'}`}>
+                   Source_Frame
                 </div>
                 <img 
                   src={imageUrl} 
-                  alt={`Visualization of ${segment.timestamp}`} 
-                  className="w-full h-auto object-cover border border-neutral-800 opacity-80 group-hover/image:opacity-100 transition-opacity duration-500"
+                  alt={`Frame at ${segment.timestamp}`} 
+                  className={`w-full h-auto object-cover border transition-all duration-500 ${isHighlighted ? 'border-accent opacity-100' : 'border-neutral-800 opacity-90 group-hover/image:opacity-100'}`}
                 />
              </div>
-          ) : segment.visualContext ? (
+          ) : (
              <div className="w-full aspect-video bg-neutral-900/30 border border-neutral-800/50 flex items-center justify-center group-hover:border-neutral-700 transition-colors">
                 <div className="text-center space-y-2">
                    <ImageIcon size={20} className="text-neutral-700 mx-auto" />
-                   <span className="block font-mono text-[8px] text-neutral-700 uppercase tracking-widest">No Visualization Generated</span>
+                   <span className="block font-mono text-[8px] text-neutral-700 uppercase tracking-widest">Frame Unavailable</span>
                 </div>
              </div>
-          ) : null}
+          )}
        </div>
     </div>
   );
 };
 
-const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
+const SummaryResult: React.FC<SummaryResultProps> = ({ summary, videoUrl }) => {
   const [copied, setCopied] = React.useState(false);
   
   // Audio Remix State
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioData, setAudioData] = useState<{ text: string, audioBase64: string } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  
+  // Highlighting State
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
@@ -195,12 +279,30 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
         });
       }
 
-      const takeawaysMatch = summary.match(/## 🗝️ Key Takeaways([\s\S]*)/);
-      const takeaways = takeawaysMatch ? takeawaysMatch[1].trim() : '';
+      // Updated regex to match the new "Critical Analysis & Takeaways" header
+      const takeawaysMatch = summary.match(/## 🗝️ Critical Analysis & Takeaways([\s\S]*)/) || summary.match(/## 🗝️ Key Takeaways([\s\S]*)/);
+      
+      let insights: InsightData[] = [];
+      const rawTakeaways = takeawaysMatch ? takeawaysMatch[1].trim() : '';
+
+      if (rawTakeaways) {
+         // Split by markdown bullets
+         const items = rawTakeaways.split('\n').filter(line => line.trim().startsWith('*') || line.trim().startsWith('-'));
+         insights = items.map(item => {
+             // Clean the bullet
+             const clean = item.replace(/^[*-\s]+/, '').trim();
+             // Try to find bolded title pattern **TITLE**: Content
+             const titleMatch = clean.match(/\*\*(.*?)\*\*:?\s*(.*)/);
+             if (titleMatch) {
+                 return { title: titleMatch[1], content: titleMatch[2] };
+             }
+             return { title: 'Observation', content: clean };
+         });
+      }
 
       if (!executive && timelineSegments.length === 0) return null;
 
-      return { executive, timelineSegments, takeaways };
+      return { executive, timelineSegments, insights, rawTakeaways };
     } catch (e) {
       console.error("Parsing error", e);
       return null;
@@ -212,6 +314,13 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  };
+
+  const handleSegmentClick = (id: string) => {
+    scrollToId(id);
+    setHighlightedId(id);
+    // Remove highlight after animation duration (2.5s allows for a nice fade in/out cycle)
+    setTimeout(() => setHighlightedId(null), 2500);
   };
 
   const handleCopy = () => {
@@ -561,6 +670,13 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
                 <div className="h-px w-4 bg-accent mb-4"></div>
                 
                 <button 
+                  onClick={() => scrollToId('critical-insights')}
+                  className="block text-left font-serif italic text-white text-sm hover:text-accent hover:translate-x-1 transition-all font-medium"
+                >
+                  Critical Insights
+                </button>
+
+                <button 
                   onClick={() => scrollToId('executive-summary')}
                   className="block text-left font-serif italic text-neutral-400 text-sm hover:text-white hover:translate-x-1 transition-all"
                 >
@@ -580,7 +696,7 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
                         {parsedContent.timelineSegments.map((segment, idx) => (
                            <button 
                               key={idx}
-                              onClick={() => scrollToId(`segment-${idx}`)}
+                              onClick={() => handleSegmentClick(`segment-${idx}`)}
                               className="block w-full text-left font-mono text-[10px] text-neutral-500 hover:text-accent transition-colors truncate py-0.5"
                               title={`${segment.timestamp} - ${segment.title}`}
                            >
@@ -591,24 +707,59 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
                      </div>
                    )}
                 </div>
-
-                <button 
-                  onClick={() => scrollToId('key-takeaways')}
-                  className="block text-left font-serif italic text-neutral-400 text-sm hover:text-white hover:translate-x-1 transition-all"
-                >
-                  Key Takeaways
-                </button>
             </div>
         </div>
 
         {/* Main Content Area */}
         <div className="max-w-none">
             {parsedContent ? (
-                <div className="space-y-16">
+                <div className="space-y-24">
+                    
+                    {/* Critical Insights (New Hero Section) */}
+                    <section id="critical-insights" className="scroll-mt-32">
+                        <div className="flex items-center gap-3 mb-8">
+                             <div className="p-1.5 border border-accent rounded-sm">
+                                <Sparkles size={16} className="text-accent" />
+                             </div>
+                             <h2 className="font-serif text-3xl italic text-white">Critical Analysis & Takeaways</h2>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {parsedContent.insights.map((insight, idx) => (
+                                <div 
+                                    key={idx} 
+                                    className="group relative bg-[#080808] border border-white/10 p-6 hover:border-accent transition-colors duration-500"
+                                >
+                                    {/* Numbering */}
+                                    <div className="absolute top-0 right-0 p-3 font-mono text-[10px] text-neutral-700 group-hover:text-accent transition-colors">
+                                        0{idx + 1}
+                                    </div>
+                                    
+                                    {/* Decor corners */}
+                                    <div className="absolute top-0 left-0 w-1 h-1 bg-white/20 group-hover:bg-accent transition-colors"></div>
+                                    <div className="absolute bottom-0 right-0 w-1 h-1 bg-white/20 group-hover:bg-accent transition-colors"></div>
+
+                                    <div className="space-y-4">
+                                        <div className="flex items-start gap-3">
+                                            {/* Icon based on index for variety */}
+                                            {idx % 2 === 0 ? <Lightbulb size={14} className="text-neutral-600 mt-1 group-hover:text-white transition-colors"/> : <Zap size={14} className="text-neutral-600 mt-1 group-hover:text-white transition-colors"/>}
+                                            <h3 className="font-mono text-sm text-accent uppercase tracking-wider leading-relaxed">
+                                                {insight.title}
+                                            </h3>
+                                        </div>
+                                        <p className="font-serif text-neutral-400 font-light leading-relaxed text-sm group-hover:text-neutral-200 transition-colors">
+                                            {insight.content}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
                     {/* Executive Summary */}
                     <section id="executive-summary" className="scroll-mt-32">
                         <h2 className="font-serif text-2xl mb-6 italic text-white border-b border-white/5 pb-2">Executive Summary</h2>
-                        <div className="prose prose-invert prose-p:text-neutral-300 prose-p:font-light prose-p:leading-relaxed">
+                        <div className="prose prose-invert prose-p:text-neutral-300 prose-p:font-light prose-p:leading-relaxed text-lg">
                             <ReactMarkdown>{parsedContent.executive}</ReactMarkdown>
                         </div>
                     </section>
@@ -618,28 +769,14 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
                         <h2 className="font-serif text-2xl mb-12 italic text-white border-b border-white/5 pb-2">Detailed Chronological Analysis</h2>
                         <div className="space-y-0">
                            {parsedContent.timelineSegments.map((segment, idx) => (
-                              <TimelineSegment key={idx} id={`segment-${idx}`} segment={segment} />
+                              <TimelineSegment 
+                                key={idx} 
+                                id={`segment-${idx}`} 
+                                segment={segment} 
+                                videoUrl={videoUrl} 
+                                isHighlighted={highlightedId === `segment-${idx}`}
+                              />
                            ))}
-                        </div>
-                    </section>
-
-                    {/* Key Takeaways */}
-                    <section id="key-takeaways" className="scroll-mt-32">
-                        <h2 className="font-serif text-2xl mb-6 italic text-white border-b border-white/5 pb-2">Key Takeaways</h2>
-                        <div className="prose prose-invert prose-p:text-neutral-300 prose-strong:text-white">
-                            <ReactMarkdown
-                                components={{
-                                    ul: ({node, ...props}) => <ul className="space-y-4 list-none pl-0" {...props} />,
-                                    li: ({node, ...props}) => (
-                                        <li 
-                                            className="group pl-6 border-l-2 border-white/10 hover:border-accent hover:-translate-y-1 transition-all duration-300 py-2 hover:bg-white/5" 
-                                            {...props} 
-                                        />
-                                    )
-                                }}
-                            >
-                                {parsedContent.takeaways}
-                            </ReactMarkdown>
                         </div>
                     </section>
                 </div>

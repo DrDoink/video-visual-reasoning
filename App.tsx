@@ -314,9 +314,9 @@ const App: React.FC = () => {
         </section>
 
         {/* Results Section */}
-        {summary && (
+        {summary && video && (
           <section ref={resultsRef} className="pb-24">
-            <SummaryResult summary={summary} />
+            <SummaryResult summary={summary} videoUrl={video.previewUrl} />
           </section>
         )}
       </main>
