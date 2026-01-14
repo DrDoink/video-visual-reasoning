@@ -1,0 +1,5 @@
+{
+  "name": "Video to Visual Reasoning",
+  "description": "Intelligent video summarization tool that analyzes both visual and audio cues to provide detailed context and comprehensive summaries.",
+  "requestFramePermissions": []
+}
