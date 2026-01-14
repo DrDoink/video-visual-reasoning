@@ -126,11 +126,16 @@ export const generateAudioReview = async (originalSummary: string): Promise<{ te
     // Step 1: Generate the creative text
     const textModel = 'gemini-3-flash-preview';
     const textPrompt = `
-      Based on the following video analysis, write a short, fun, weirdly detailed, and nuanced summary. 
-      Focus on specific visual oddities, awkward moments, or minute details that a normal summary might miss. 
-      Adopt a persona that is hyper-observant, enthusiastic, and slightly eccentric.
-      The summary will be read aloud, so make it conversational.
-      Keep it under 150 words.
+      Based on the following video analysis, write a short, creative, and slightly pretentious audio script.
+      
+      Persona: You are an avant-garde cultural critic or media studies professor hosting a niche podcast about "The Semiotics of the Everyday." You find profound, almost absurd philosophical meaning in the mundane details of the footage.
+
+      Instructions:
+      1. Focus intensely on specific visual minutiae (e.g., a flickering light, the texture of a wall, a background glance, the specific grain of the image) rather than the main plot.
+      2. Use academic or critical theory buzzwords playfully and liberally (e.g., "liminality", "verisimilitude", "diegetic dissonance", "the male gaze", "simulacrum", "hauntology").
+      3. Be enthusiastic, hyper-observant, and weirdly specific. Treat the video as a piece of high art, even if it isn't.
+      4. Keep it conversational and spoken-word style.
+      5. Maximum 150 words.
       
       Original Analysis:
       ${originalSummary}
@@ -153,7 +158,7 @@ export const generateAudioReview = async (originalSummary: string): Promise<{ te
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            // Puck is a good voice for "fun and weirdly detailed"
+            // Puck is a good voice for "fun and weirdly detailed", maybe Kore for "pretentious professor" but keeping Puck for the "enthusiastic" vibe.
             prebuiltVoiceConfig: { voiceName: 'Puck' } 
           },
         },

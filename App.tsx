@@ -96,13 +96,23 @@ const App: React.FC = () => {
       // We use 19MB as the threshold to be safe for the 20MB limit
       if (sizeMB > 19) {
           setStatus(ProcessingStatus.COMPRESSING);
-          setStatusMessage('OPTIMIZING_MEDIA_STREAM...');
+          setStatusMessage('INITIALIZING_COMPRESSION_ENGINE...');
           setProgress(0);
           
           try {
              const compressedBlob = await compressVideo(processingFile, (p) => {
                  setProgress(p);
-                 setStatusMessage(`COMPRESSING_DATA... ${p}%`);
+                 
+                 // Technical feedback based on percentage
+                 if (p < 15) {
+                   setStatusMessage(`INITIALIZING_CODEC_ENGINE... ${p}%`);
+                 } else if (p < 40) {
+                   setStatusMessage(`DOWNSCALING_FRAME_BUFFER... ${p}%`);
+                 } else if (p < 75) {
+                   setStatusMessage(`OPTIMIZING_BITRATE_STREAM... ${p}%`);
+                 } else {
+                   setStatusMessage(`FINALIZING_ENCODING... ${p}%`);
+                 }
              });
              
              // Cast Blob to File-like object or just use blob for base64 conversion
@@ -233,7 +243,13 @@ const App: React.FC = () => {
                      <div className="w-full bg-neutral-800 h-1 overflow-hidden relative">
                         <div 
                            className="h-full bg-accent transition-all duration-300 ease-out relative"
-                           style={{ width: `${progress}%` }}
+                           style={{ 
+                               width: `${progress}%`,
+                               backgroundImage: status === ProcessingStatus.COMPRESSING 
+                                ? 'linear-gradient(45deg,rgba(0,0,0,0.4) 25%,transparent 25%,transparent 50%,rgba(0,0,0,0.4) 50%,rgba(0,0,0,0.4) 75%,transparent 75%,transparent)' 
+                                : 'none',
+                               backgroundSize: '1rem 1rem' 
+                           }}
                         >
                            {/* Glow tip */}
                            <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 bg-accent blur-[6px] opacity-50"></div>
