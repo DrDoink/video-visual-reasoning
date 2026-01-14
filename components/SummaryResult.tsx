@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Copy, Check, Headphones, Square, Play, Image as ImageIcon, Loader2, X } from 'lucide-react';
+import { Copy, Check, Headphones, Square, Play, Image as ImageIcon, Loader2, X, Quote, User, Activity } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import { generateThumbnail, generateAudioReview } from '../services/gemini';
 
@@ -12,6 +12,9 @@ interface TimelineSegmentData {
   raw: string;
   timestamp: string;
   title: string;
+  speaker: string;
+  sentiment: string;
+  dialogue: string;
   visualContext: string;
 }
 
@@ -56,38 +59,85 @@ const TimelineSegment: React.FC<{ segment: TimelineSegmentData; id: string }> = 
   }, [segment.visualContext]);
 
   return (
-    <div id={id} className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-8 mb-12 border-l border-white/10 pl-6 relative scroll-mt-32">
+    <div id={id} className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-8 mb-16 border-l border-white/10 pl-8 relative scroll-mt-32 group">
        {/* Timeline Node */}
-       <div className="absolute -left-[3px] top-0 w-[5px] h-[5px] bg-accent rounded-full"></div>
+       <div className="absolute -left-[5px] top-1 w-[9px] h-[9px] bg-neutral-800 border border-neutral-600 rounded-full group-hover:bg-accent group-hover:border-accent transition-colors duration-300"></div>
 
-       <div className="prose prose-invert prose-headings:font-serif prose-headings:font-normal prose-h3:text-sm prose-h3:uppercase prose-h3:tracking-widest prose-h3:text-accent prose-p:text-neutral-300 prose-p:font-light prose-p:leading-relaxed prose-strong:text-white prose-strong:font-normal prose-ul:list-none prose-ul:pl-0 prose-li:mb-2 prose-li:text-neutral-400 max-w-none">
-          <ReactMarkdown>{segment.raw}</ReactMarkdown>
+       {/* Text Content */}
+       <div className="space-y-6">
+          {/* Header */}
+          <div className="flex flex-col gap-1">
+             <div className="flex items-center gap-3">
+                <span className="font-mono text-accent text-xs tracking-wider bg-accent/10 px-1.5 py-0.5 rounded">{segment.timestamp}</span>
+             </div>
+             <h3 className="font-serif text-xl text-white italic leading-tight mt-2">{segment.title}</h3>
+          </div>
+
+          {/* Speaker & Sentiment Meta */}
+          <div className="flex flex-wrap gap-y-2 gap-x-6 py-3 border-y border-white/5">
+              {segment.speaker && (
+                  <div className="flex items-center gap-2">
+                      <User size={12} className="text-neutral-500" />
+                      <span className="font-mono text-[10px] text-neutral-500 uppercase tracking-widest">Speaker</span>
+                      <span className="font-sans text-xs text-neutral-200 font-medium">{segment.speaker}</span>
+                  </div>
+              )}
+              {segment.sentiment && (
+                  <div className="flex items-center gap-2">
+                      <Activity size={12} className="text-neutral-500" />
+                      <span className="font-mono text-[10px] text-neutral-500 uppercase tracking-widest">Sentiment</span>
+                      <span className="font-sans text-xs text-accent/80">{segment.sentiment}</span>
+                  </div>
+              )}
+          </div>
+
+          {/* Dialogue / Content */}
+          <div className="relative">
+             <Quote size={24} className="absolute -left-4 -top-2 text-white/5" />
+             <div className="relative pl-4 border-l-2 border-accent/30">
+                <p className="font-serif text-lg text-neutral-300 leading-relaxed italic opacity-90">
+                   "{segment.dialogue}"
+                </p>
+             </div>
+          </div>
+
+          {/* Visual Context Text */}
+          {segment.visualContext && (
+              <div className="pt-2">
+                  <span className="font-mono text-[9px] text-neutral-600 uppercase tracking-widest mb-1 block">Visual Context</span>
+                  <p className="font-sans text-xs text-neutral-500 leading-relaxed max-w-prose">
+                      {segment.visualContext}
+                  </p>
+              </div>
+          )}
        </div>
 
        {/* Visual Thumbnail */}
-       <div className="w-full">
+       <div className="w-full pt-1">
           {loading ? (
              <div className="w-full aspect-video bg-neutral-900 border border-neutral-800 flex flex-col items-center justify-center gap-3 animate-pulse">
                 <Loader2 size={24} className="text-neutral-600 animate-spin" />
                 <span className="font-mono text-[8px] text-neutral-600 uppercase tracking-widest">Generating_Keyframe</span>
              </div>
           ) : imageUrl ? (
-             <div className="w-full group relative corner-brackets p-1">
-                <div className="absolute -top-3 left-0 bg-[#050505] px-2 font-mono text-[8px] text-accent uppercase tracking-widest z-10">
+             <div className="w-full group/image relative corner-brackets p-1">
+                <div className="absolute -top-2 left-0 bg-[#050505] px-2 font-mono text-[8px] text-accent uppercase tracking-widest z-10">
                    AI_Visualization
                 </div>
                 <img 
                   src={imageUrl} 
                   alt={`Visualization of ${segment.timestamp}`} 
-                  className="w-full h-auto object-cover border border-neutral-800 opacity-80 group-hover:opacity-100 transition-opacity duration-500"
+                  className="w-full h-auto object-cover border border-neutral-800 opacity-80 group-hover/image:opacity-100 transition-opacity duration-500"
                 />
              </div>
-          ) : (
-             <div className="w-full aspect-video bg-neutral-900/30 border border-neutral-800/50 flex items-center justify-center">
-                <ImageIcon size={24} className="text-neutral-700/50" />
-                <span className="sr-only">No visualization available</span>
+          ) : segment.visualContext ? (
+             <div className="w-full aspect-video bg-neutral-900/30 border border-neutral-800/50 flex items-center justify-center group-hover:border-neutral-700 transition-colors">
+                <div className="text-center space-y-2">
+                   <ImageIcon size={20} className="text-neutral-700 mx-auto" />
+                   <span className="block font-mono text-[8px] text-neutral-700 uppercase tracking-widest">No Visualization Generated</span>
+                </div>
              </div>
-          )}
+          ) : null}
        </div>
     </div>
   );
@@ -123,17 +173,23 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
           const header = lines[0] || '';
           
           // Extract timestamp and title
+          // Header format: ### 🔹 [MM:SS] - Title
           const timeMatch = header.match(/\[(.*?)\]/);
-          const titleMatch = header.match(/-\s*(.*)/); // Assumes " - Title" format
+          const titleMatch = header.match(/\]\s*-\s*(.*)/); 
           
-          // Extract visual context - improved regex for multi-line support
-          // Captures text after "Visual Context**:" until the next double newline, next bullet, or next header
+          // Regex extraction for fields
+          const speakerMatch = seg.match(/\*\*🗣️ Speaker\*\*:([\s\S]*?)(?=\n\s*\*|\n###|$)/);
+          const sentimentMatch = seg.match(/\*\*🎭 Sentiment\*\*:([\s\S]*?)(?=\n\s*\*|\n###|$)/);
+          const dialogueMatch = seg.match(/\*\*💬 Dialogue\*\*:([\s\S]*?)(?=\n\s*\*|\n###|$)/);
           const visualMatch = seg.match(/\*\*👁️ Visual Context\*\*:([\s\S]*?)(?=\n\s*\*|\n###|$)/);
           
           return {
             raw: seg,
             timestamp: timeMatch ? timeMatch[1] : '00:00',
-            title: titleMatch ? titleMatch[1] : 'Untitled Segment',
+            title: titleMatch ? titleMatch[1].trim() : 'Event Segment',
+            speaker: speakerMatch ? speakerMatch[1].trim() : 'Unknown Speaker',
+            sentiment: sentimentMatch ? sentimentMatch[1].trim() : 'Neutral',
+            dialogue: dialogueMatch ? dialogueMatch[1].trim() : 'No dialogue detected.',
             visualContext: visualMatch ? visualMatch[1].trim() : ''
           };
         });
@@ -559,7 +615,7 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
 
                     {/* Timeline Analysis */}
                     <section id="chronological-analysis" className="scroll-mt-32">
-                        <h2 className="font-serif text-2xl mb-8 italic text-white border-b border-white/5 pb-2">Detailed Chronological Analysis</h2>
+                        <h2 className="font-serif text-2xl mb-12 italic text-white border-b border-white/5 pb-2">Detailed Chronological Analysis</h2>
                         <div className="space-y-0">
                            {parsedContent.timelineSegments.map((segment, idx) => (
                               <TimelineSegment key={idx} id={`segment-${idx}`} segment={segment} />
