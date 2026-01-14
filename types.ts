@@ -5,6 +5,7 @@ export interface VideoSummary {
 
 export enum ProcessingStatus {
   IDLE = 'IDLE',
+  COMPRESSING = 'COMPRESSING', // Converting/Downscaling large videos
   PROCESSING_VIDEO = 'PROCESSING_VIDEO', // Converting to base64
   ANALYZING = 'ANALYZING', // Sending to Gemini
   COMPLETE = 'COMPLETE',

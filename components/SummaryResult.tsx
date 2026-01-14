@@ -34,7 +34,8 @@ const TimelineSegment: React.FC<{ segment: TimelineSegmentData; id: string }> = 
     let isMounted = true;
 
     const fetchImage = async () => {
-      if (!segment.visualContext || segment.visualContext.length < 10) return;
+      // If no visual context or it's just "N/A" or too short, skip generation to save API calls/time
+      if (!segment.visualContext || segment.visualContext.length < 5 || segment.visualContext.toLowerCase().includes('n/a')) return;
       
       setLoading(true);
       try {
@@ -83,7 +84,8 @@ const TimelineSegment: React.FC<{ segment: TimelineSegmentData; id: string }> = 
              </div>
           ) : (
              <div className="w-full aspect-video bg-neutral-900/30 border border-neutral-800/50 flex items-center justify-center">
-                <ImageIcon size={24} className="text-neutral-700" />
+                <ImageIcon size={24} className="text-neutral-700/50" />
+                <span className="sr-only">No visualization available</span>
              </div>
           )}
        </div>
@@ -124,8 +126,9 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
           const timeMatch = header.match(/\[(.*?)\]/);
           const titleMatch = header.match(/-\s*(.*)/); // Assumes " - Title" format
           
-          // Extract visual context
-          const visualMatch = seg.match(/\*\*👁️ Visual Context\*\*: (.*?)(?=\n|$)/);
+          // Extract visual context - improved regex for multi-line support
+          // Captures text after "Visual Context**:" until the next double newline, next bullet, or next header
+          const visualMatch = seg.match(/\*\*👁️ Visual Context\*\*:([\s\S]*?)(?=\n\s*\*|\n###|$)/);
           
           return {
             raw: seg,

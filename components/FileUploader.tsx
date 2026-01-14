@@ -1,13 +1,14 @@
 import React, { useCallback, useState } from 'react';
 import { VideoFile } from '../types';
-import { Plus, AlertCircle, ArrowUpRight, FileVideo } from 'lucide-react';
+import { Plus, AlertCircle, ArrowUpRight, FileVideo, Cpu } from 'lucide-react';
 
 interface FileUploaderProps {
   onFileSelect: (videoFile: VideoFile) => void;
   isLoading: boolean;
 }
 
-const MAX_FILE_SIZE_MB = 19;
+// Increased limit to allow for client-side compression
+const MAX_FILE_SIZE_MB = 200;
 
 const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelect, isLoading }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -94,6 +95,10 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelect, isLoading }) 
 
         {/* Zone 2: Top Right (Main Heading) */}
         <div className="absolute top-0 right-0 left-[30%] h-[65%] p-6 md:p-10 flex flex-col justify-end items-start">
+             <div className="absolute top-6 right-6 flex items-center gap-2">
+                <Cpu size={14} className="text-neutral-600" />
+                <span className="font-mono text-[9px] text-neutral-600 uppercase tracking-widest">Smart Compression Active</span>
+             </div>
              <h3 className="font-sans text-4xl md:text-5xl font-medium text-white tracking-tight leading-[0.9]">
                 Upload Source <br/>
                 <span className="text-neutral-600 group-hover:text-white transition-colors">Material</span>

@@ -5,7 +5,8 @@ import VideoPreview from './components/VideoPreview';
 import SummaryResult from './components/SummaryResult';
 import { VideoFile, ProcessingStatus } from './types';
 import { summarizeVideo } from './services/gemini';
-import { Loader2, AlertTriangle, RefreshCcw } from 'lucide-react';
+import { compressVideo } from './services/compression';
+import { Loader2, AlertTriangle, RefreshCcw, HardDrive } from 'lucide-react';
 
 const App: React.FC = () => {
   const [video, setVideo] = useState<VideoFile | null>(null);
@@ -17,7 +18,7 @@ const App: React.FC = () => {
 
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Simulate progress based on status
+  // Simulate progress based on status, or use real progress for compression
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
 
@@ -42,6 +43,7 @@ const App: React.FC = () => {
     } else if (status === ProcessingStatus.COMPLETE) {
       setProgress(100);
     }
+    // Note: COMPRESSING status is handled by the callback in compressVideo
 
     return () => {
       if (interval) clearInterval(interval);
@@ -67,10 +69,10 @@ const App: React.FC = () => {
     setProgress(0);
   };
 
-  const convertFileToBase64 = (file: File): Promise<string> => {
+  const convertBlobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(blob);
       reader.onload = () => {
         const result = reader.result as string;
         const base64Data = result.split(',')[1];
@@ -84,18 +86,44 @@ const App: React.FC = () => {
     if (!video) return;
 
     try {
-      setStatus(ProcessingStatus.PROCESSING_VIDEO);
-      setProgress(0);
-      setStatusMessage('ENCODING_MEDIA_STREAM...');
       setError(null);
+      
+      let processingFile = video.file;
+      const sizeMB = processingFile.size / (1024 * 1024);
+      
+      // If file is > 19MB, compress it first
+      // We use 19MB as the threshold to be safe for the 20MB limit
+      if (sizeMB > 19) {
+          setStatus(ProcessingStatus.COMPRESSING);
+          setStatusMessage('OPTIMIZING_MEDIA_STREAM...');
+          setProgress(0);
+          
+          try {
+             const compressedBlob = await compressVideo(processingFile, (p) => {
+                 setProgress(p);
+                 setStatusMessage(`COMPRESSING_DATA... ${p}%`);
+             });
+             
+             // Cast Blob to File-like object or just use blob for base64 conversion
+             // We don't need a full File object for base64 conversion
+             processingFile = new File([compressedBlob], "compressed.mp4", { type: 'video/mp4' });
+          } catch (compError: any) {
+             console.error("Compression failed", compError);
+             throw new Error("Video compression failed. Please try a smaller file.");
+          }
+      }
 
-      const base64Data = await convertFileToBase64(video.file);
+      setStatus(ProcessingStatus.PROCESSING_VIDEO);
+      setProgress(0); // Reset for encoding phase visual
+      setStatusMessage('ENCODING_MEDIA_STREAM...');
+
+      const base64Data = await convertBlobToBase64(processingFile);
 
       setStatus(ProcessingStatus.ANALYZING);
       
       const result = await summarizeVideo(
         base64Data, 
-        video.file.type,
+        processingFile.type,
         (msg) => setStatusMessage(msg === 'Initializing Gemini model...' ? 'INITIALIZING_MODEL...' : 'ANALYZING_VISUAL_CONTEXT...')
       );
 
@@ -155,7 +183,7 @@ const App: React.FC = () => {
                      <VideoPreview 
                         previewUrl={video.previewUrl} 
                         onClear={handleClearVideo}
-                        isLoading={status === ProcessingStatus.PROCESSING_VIDEO || status === ProcessingStatus.ANALYZING}
+                        isLoading={status === ProcessingStatus.PROCESSING_VIDEO || status === ProcessingStatus.ANALYZING || status === ProcessingStatus.COMPRESSING}
                      />
                      
                      <div className="flex flex-col sm:flex-row items-center justify-between gap-6 border-t border-white/10 pt-6">
@@ -163,7 +191,7 @@ const App: React.FC = () => {
                            FILE: <span className="text-white">{video.file.name}</span>
                         </div>
                         
-                        {status !== ProcessingStatus.COMPLETE && status !== ProcessingStatus.ANALYZING && status !== ProcessingStatus.PROCESSING_VIDEO && (
+                        {status !== ProcessingStatus.COMPLETE && status !== ProcessingStatus.ANALYZING && status !== ProcessingStatus.PROCESSING_VIDEO && status !== ProcessingStatus.COMPRESSING && (
                            <button
                               onClick={handleGenerateSummary}
                               className="w-full sm:w-auto px-8 py-3 bg-white text-black font-mono text-xs tracking-widest uppercase hover:bg-accent transition-colors duration-300"
@@ -176,7 +204,7 @@ const App: React.FC = () => {
                )}
 
                {/* Processing Indicator */}
-               {(status === ProcessingStatus.PROCESSING_VIDEO || status === ProcessingStatus.ANALYZING) && (
+               {(status === ProcessingStatus.PROCESSING_VIDEO || status === ProcessingStatus.ANALYZING || status === ProcessingStatus.COMPRESSING) && (
                   <div className="mt-8 border border-white/10 p-6 flex flex-col gap-4 bg-neutral-900/20 animate-in fade-in duration-500">
                      <div className="flex justify-between items-end">
                         <div className="flex flex-col gap-1">
@@ -200,8 +228,17 @@ const App: React.FC = () => {
                      </div>
 
                      <div className="flex justify-between text-neutral-700 font-mono text-[8px] uppercase tracking-wider">
-                        <span>[ SYNCING_BUFFER ]</span>
-                        <span>[ ESTIMATING_LATENCY ]</span>
+                        {status === ProcessingStatus.COMPRESSING ? (
+                            <>
+                                <span>[ DOWNSCALING_VIDEO ]</span>
+                                <span>[ OPTIMIZING_BITRATE ]</span>
+                            </>
+                        ) : (
+                            <>
+                                <span>[ SYNCING_BUFFER ]</span>
+                                <span>[ ESTIMATING_LATENCY ]</span>
+                            </>
+                        )}
                      </div>
                   </div>
                )}
