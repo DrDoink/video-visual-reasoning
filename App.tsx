@@ -151,7 +151,7 @@ const App: React.FC = () => {
         
         {/* Editorial Hero */}
         <section className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-12 items-start border-b border-white/10 pb-16">
-            <div className="space-y-8">
+            <div className="space-y-12">
                 <div className="space-y-2">
                     <p className="font-mono text-xs text-accent uppercase tracking-[0.2em] mb-4">
                         Computational Semiotics
@@ -161,27 +161,31 @@ const App: React.FC = () => {
                         <span className="italic text-neutral-500">your</span> Spectacle.
                     </h2>
                 </div>
-                <div className="max-w-md space-y-6">
-                    <p className="font-light text-neutral-400 text-lg leading-relaxed">
-                        A <span className="text-white border-b border-accent/50 pb-0.5">hermeneutic engine</span> for the post-digital archive. 
-                        Employs multimodal AI to parse video streams into semantic narratives, 
-                        decoding the syntax of both audio and visual context.
-                    </p>
-                    
-                    <div className="flex gap-4 font-mono text-[10px] uppercase text-neutral-600">
-                        <span>[ AURAL_SIGNIFIERS ]</span>
-                        <span>[ VISUAL_SYNTAX ]</span>
-                        <span>[ NARRATIVE_STRUCTURE ]</span>
+                
+                {/* Description & Output Example Side-by-Side */}
+                <div className="flex flex-col xl:flex-row gap-8 items-start">
+                    <div className="max-w-md space-y-6">
+                        <p className="font-light text-neutral-400 text-lg leading-relaxed">
+                            A <span className="text-white border-b border-accent/50 pb-0.5">hermeneutic engine</span> for the post-digital archive. 
+                            Employs multimodal AI to parse video streams into semantic narratives, 
+                            decoding the syntax of both audio and visual context.
+                        </p>
+                        
+                        <div className="flex gap-4 font-mono text-[10px] uppercase text-neutral-600">
+                            <span>[ AURAL_SIGNIFIERS ]</span>
+                            <span>[ VISUAL_SYNTAX ]</span>
+                            <span>[ NARRATIVE_STRUCTURE ]</span>
+                        </div>
                     </div>
-                </div>
 
-                {/* Example Showcase - New Section */}
-                <div className="pt-6 w-full max-w-lg">
-                    <p className="font-mono text-[10px] text-neutral-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <span className="w-2 h-2 bg-accent/50 rounded-full"></span>
-                        Analysis_Output_Examples
-                    </p>
-                    <ExampleCarousel />
+                    {/* Compact Carousel */}
+                    <div className="w-full max-w-[260px] shrink-0">
+                         <p className="font-mono text-[9px] text-neutral-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                             <span className="w-1.5 h-1.5 bg-accent/50 rounded-full"></span>
+                             Output_Samples
+                         </p>
+                         <ExampleCarousel />
+                    </div>
                 </div>
             </div>
 
