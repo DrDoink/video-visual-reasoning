@@ -1,20 +1,248 @@
-import React from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Copy, Check, FileText, Download, FileType } from 'lucide-react';
+import { Copy, Check, Headphones, Square, Play, Image as ImageIcon, Loader2, X } from 'lucide-react';
 import { jsPDF } from "jspdf";
+import { generateThumbnail, generateAudioReview } from '../services/gemini';
 
 interface SummaryResultProps {
   summary: string;
 }
 
+interface TimelineSegmentData {
+  raw: string;
+  timestamp: string;
+  title: string;
+  visualContext: string;
+}
+
+// Helper to decode base64 string
+function decodeBase64(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+const TimelineSegment: React.FC<{ segment: TimelineSegmentData; id: string }> = ({ segment, id }) => {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchImage = async () => {
+      if (!segment.visualContext || segment.visualContext.length < 10) return;
+      
+      setLoading(true);
+      try {
+        const url = await generateThumbnail(segment.visualContext);
+        if (isMounted && url) {
+          setImageUrl(url);
+        }
+      } catch (err) {
+        console.error("Failed to load thumbnail", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchImage();
+
+    return () => { isMounted = false; };
+  }, [segment.visualContext]);
+
+  return (
+    <div id={id} className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-8 mb-12 border-l border-white/10 pl-6 relative scroll-mt-32">
+       {/* Timeline Node */}
+       <div className="absolute -left-[3px] top-0 w-[5px] h-[5px] bg-accent rounded-full"></div>
+
+       <div className="prose prose-invert prose-headings:font-serif prose-headings:font-normal prose-h3:text-sm prose-h3:uppercase prose-h3:tracking-widest prose-h3:text-accent prose-p:text-neutral-300 prose-p:font-light prose-p:leading-relaxed prose-strong:text-white prose-strong:font-normal prose-ul:list-none prose-ul:pl-0 prose-li:mb-2 prose-li:text-neutral-400 max-w-none">
+          <ReactMarkdown>{segment.raw}</ReactMarkdown>
+       </div>
+
+       {/* Visual Thumbnail */}
+       <div className="w-full">
+          {loading ? (
+             <div className="w-full aspect-video bg-neutral-900 border border-neutral-800 flex flex-col items-center justify-center gap-3 animate-pulse">
+                <Loader2 size={24} className="text-neutral-600 animate-spin" />
+                <span className="font-mono text-[8px] text-neutral-600 uppercase tracking-widest">Generating_Keyframe</span>
+             </div>
+          ) : imageUrl ? (
+             <div className="w-full group relative corner-brackets p-1">
+                <div className="absolute -top-3 left-0 bg-[#050505] px-2 font-mono text-[8px] text-accent uppercase tracking-widest z-10">
+                   AI_Visualization
+                </div>
+                <img 
+                  src={imageUrl} 
+                  alt={`Visualization of ${segment.timestamp}`} 
+                  className="w-full h-auto object-cover border border-neutral-800 opacity-80 group-hover:opacity-100 transition-opacity duration-500"
+                />
+             </div>
+          ) : (
+             <div className="w-full aspect-video bg-neutral-900/30 border border-neutral-800/50 flex items-center justify-center">
+                <ImageIcon size={24} className="text-neutral-700" />
+             </div>
+          )}
+       </div>
+    </div>
+  );
+};
+
 const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
   const [copied, setCopied] = React.useState(false);
+  
+  // Audio Remix State
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [audioData, setAudioData] = useState<{ text: string, audioBase64: string } | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+
+  // Parse summary into sections for advanced rendering
+  const parsedContent = useMemo(() => {
+    try {
+      const executiveMatch = summary.match(/## 🎬 Executive Summary([\s\S]*?)(?=## ⏱️|$)/);
+      const executive = executiveMatch ? executiveMatch[1].trim() : '';
+
+      const timelineMatch = summary.match(/## ⏱️ Detailed Chronological Analysis([\s\S]*?)(?=## 🗝️|$)/);
+      let timelineSegments: TimelineSegmentData[] = [];
+      
+      if (timelineMatch) {
+        const timelineText = timelineMatch[1];
+        // Split by the segment header pattern ### 🔹
+        const rawSegments = timelineText.split(/(?=### 🔹)/).filter(s => s.trim().startsWith('### 🔹'));
+        
+        timelineSegments = rawSegments.map(seg => {
+          const lines = seg.trim().split('\n');
+          const header = lines[0] || '';
+          
+          // Extract timestamp and title
+          const timeMatch = header.match(/\[(.*?)\]/);
+          const titleMatch = header.match(/-\s*(.*)/); // Assumes " - Title" format
+          
+          // Extract visual context
+          const visualMatch = seg.match(/\*\*👁️ Visual Context\*\*: (.*?)(?=\n|$)/);
+          
+          return {
+            raw: seg,
+            timestamp: timeMatch ? timeMatch[1] : '00:00',
+            title: titleMatch ? titleMatch[1] : 'Untitled Segment',
+            visualContext: visualMatch ? visualMatch[1].trim() : ''
+          };
+        });
+      }
+
+      const takeawaysMatch = summary.match(/## 🗝️ Key Takeaways([\s\S]*)/);
+      const takeaways = takeawaysMatch ? takeawaysMatch[1].trim() : '';
+
+      if (!executive && timelineSegments.length === 0) return null;
+
+      return { executive, timelineSegments, takeaways };
+    } catch (e) {
+      console.error("Parsing error", e);
+      return null;
+    }
+  }, [summary]);
+
+  const scrollToId = (id: string) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(summary);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const handleGenerateAudio = async () => {
+    if (audioData) return;
+
+    setIsGeneratingAudio(true);
+    try {
+      const result = await generateAudioReview(summary);
+      setAudioData({ text: result.text, audioBase64: result.audioData });
+    } catch (error) {
+      console.error("Failed to generate audio", error);
+      alert("Could not generate audio remix. Try again later.");
+    } finally {
+      setIsGeneratingAudio(false);
+    }
+  };
+
+  const handleCloseAudio = () => {
+    stopAudio();
+    setAudioData(null);
+  };
+
+  const stopAudio = () => {
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.stop();
+      sourceNodeRef.current = null;
+    }
+    setIsPlaying(false);
+  };
+
+  const playAudio = async () => {
+    if (isPlaying) {
+      stopAudio();
+      return;
+    }
+
+    if (!audioData?.audioBase64) return;
+
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
+      }
+
+      const ctx = audioContextRef.current;
+      
+      // Decode base64
+      const bytes = decodeBase64(audioData.audioBase64);
+      
+      // Decode audio data. 
+      // Note: We need to copy the array buffer because decodeAudioData detaches it.
+      const bufferCopy = bytes.buffer.slice(0);
+      
+      // We manually handle the promise to be safe with older browser implementations
+      const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+        ctx.decodeAudioData(bufferCopy, resolve, reject);
+      });
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      
+      source.onended = () => {
+        setIsPlaying(false);
+        sourceNodeRef.current = null;
+      };
+
+      source.start();
+      sourceNodeRef.current = source;
+      setIsPlaying(true);
+      
+    } catch (error) {
+      console.error("Playback error", error);
+      setIsPlaying(false);
+    }
+  };
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+        if (audioContextRef.current) {
+            audioContextRef.current.close();
+        }
+    };
+  }, []);
 
   const handleDownloadTxt = () => {
     const element = document.createElement("a");
@@ -175,7 +403,23 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
         </div>
         
         <div className="flex items-center gap-4">
-          <div className="flex gap-1">
+           {/* Weird Remix Button */}
+           {!audioData && (
+             <button
+                onClick={handleGenerateAudio}
+                disabled={isGeneratingAudio}
+                className="group flex items-center gap-2 px-3 py-1 font-mono text-[10px] uppercase border border-accent/20 text-accent hover:bg-accent hover:text-black transition-all disabled:opacity-50 disabled:cursor-wait"
+             >
+                {isGeneratingAudio ? (
+                    <Loader2 size={12} className="animate-spin" />
+                ) : (
+                    <Headphones size={12} />
+                )}
+                <span>{isGeneratingAudio ? 'Remixing...' : 'Weird Remix'}</span>
+             </button>
+           )}
+
+          <div className="flex gap-1 border-l border-white/10 pl-4">
              <button 
                 onClick={handleDownloadTxt}
                 className="px-3 py-1 font-mono text-[10px] uppercase border border-neutral-800 text-neutral-400 hover:text-accent hover:border-accent transition-all"
@@ -201,20 +445,151 @@ const SummaryResult: React.FC<SummaryResultProps> = ({ summary }) => {
         </div>
       </div>
       
-      {/* Content */}
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_3fr] gap-12">
-        <div className="hidden md:block sticky top-32 h-fit">
-            <div className="border-l border-white/10 pl-6 space-y-2">
+      {/* Audio Remix Player Section */}
+      {audioData && (
+        <div className="mb-12 border border-accent/20 bg-accent/5 p-6 relative overflow-hidden animate-in slide-in-from-top-4">
+            {/* Close Button */}
+            <button 
+              onClick={handleCloseAudio}
+              className="absolute top-2 right-2 text-accent/50 hover:text-accent transition-colors z-20"
+              title="Close Remix"
+            >
+              <X size={16} />
+            </button>
+
+            {/* Decorative background elements */}
+            <div className="absolute top-0 right-0 w-24 h-24 bg-accent/10 blur-[40px] rounded-full pointer-events-none"></div>
+            
+            <div className="flex flex-col md:flex-row gap-6 relative z-10">
+                {/* Controls */}
+                <div className="flex flex-col gap-4 min-w-[140px]">
+                    <div className="font-mono text-[10px] text-accent uppercase tracking-widest mb-1">
+                        Audio Experience
+                    </div>
+                    <button 
+                        onClick={playAudio}
+                        className={`w-14 h-14 flex items-center justify-center rounded-full border border-accent transition-all hover:scale-105 ${isPlaying ? 'bg-accent text-black' : 'text-accent hover:bg-accent/10'}`}
+                    >
+                        {isPlaying ? <Square size={18} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-1" />}
+                    </button>
+                    {isPlaying && (
+                        <div className="flex items-center gap-1 h-4">
+                            <div className="w-1 bg-accent h-full animate-[pulse_0.5s_ease-in-out_infinite]"></div>
+                            <div className="w-1 bg-accent h-3/4 animate-[pulse_0.7s_ease-in-out_infinite]"></div>
+                            <div className="w-1 bg-accent h-full animate-[pulse_0.4s_ease-in-out_infinite]"></div>
+                            <div className="w-1 bg-accent h-1/2 animate-[pulse_0.6s_ease-in-out_infinite]"></div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Text Content */}
+                <div className="flex-1 border-l border-accent/20 pl-6">
+                    <p className="font-mono text-xs leading-relaxed text-neutral-300">
+                        "{audioData.text}"
+                    </p>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Content Rendering */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_3fr] gap-12 relative">
+        
+        {/* Navigation Sidebar */}
+        <div className="hidden md:block sticky top-32 h-fit w-64">
+            <div className="border-l border-white/10 pl-6 space-y-4">
                 <p className="font-mono text-[10px] text-neutral-500 uppercase tracking-widest mb-4">Structure</p>
                 <div className="h-px w-4 bg-accent mb-4"></div>
-                <p className="font-serif italic text-neutral-400 text-sm">Executive Summary</p>
-                <p className="font-serif italic text-neutral-400 text-sm">Chronological</p>
-                <p className="font-serif italic text-neutral-400 text-sm">Key Takeaways</p>
+                
+                <button 
+                  onClick={() => scrollToId('executive-summary')}
+                  className="block text-left font-serif italic text-neutral-400 text-sm hover:text-white hover:translate-x-1 transition-all"
+                >
+                  Executive Summary
+                </button>
+                
+                <div>
+                   <button 
+                     onClick={() => scrollToId('chronological-analysis')}
+                     className="block text-left font-serif italic text-neutral-400 text-sm hover:text-white hover:translate-x-1 transition-all mb-2"
+                   >
+                     Chronological
+                   </button>
+                   {/* Sub-navigation for segments */}
+                   {parsedContent && parsedContent.timelineSegments.length > 0 && (
+                     <div className="space-y-1 pl-3 border-l border-white/5 ml-1">
+                        {parsedContent.timelineSegments.map((segment, idx) => (
+                           <button 
+                              key={idx}
+                              onClick={() => scrollToId(`segment-${idx}`)}
+                              className="block w-full text-left font-mono text-[10px] text-neutral-500 hover:text-accent transition-colors truncate py-0.5"
+                              title={`${segment.timestamp} - ${segment.title}`}
+                           >
+                              <span className="text-neutral-600 mr-2">{segment.timestamp}</span>
+                              {segment.title}
+                           </button>
+                        ))}
+                     </div>
+                   )}
+                </div>
+
+                <button 
+                  onClick={() => scrollToId('key-takeaways')}
+                  className="block text-left font-serif italic text-neutral-400 text-sm hover:text-white hover:translate-x-1 transition-all"
+                >
+                  Key Takeaways
+                </button>
             </div>
         </div>
 
-        <div className="prose prose-invert prose-headings:font-serif prose-headings:font-normal prose-h2:text-2xl prose-h2:mt-12 prose-h2:mb-6 prose-h2:italic prose-h3:font-mono prose-h3:text-sm prose-h3:uppercase prose-h3:tracking-widest prose-h3:text-accent prose-p:text-neutral-300 prose-p:font-light prose-p:leading-relaxed prose-strong:text-white prose-strong:font-normal prose-ul:list-none prose-ul:pl-0 prose-li:mb-4 prose-li:border-l prose-li:border-white/10 prose-li:pl-6 prose-li:text-neutral-400 max-w-none">
-            <ReactMarkdown>{summary}</ReactMarkdown>
+        {/* Main Content Area */}
+        <div className="max-w-none">
+            {parsedContent ? (
+                <div className="space-y-16">
+                    {/* Executive Summary */}
+                    <section id="executive-summary" className="scroll-mt-32">
+                        <h2 className="font-serif text-2xl mb-6 italic text-white border-b border-white/5 pb-2">Executive Summary</h2>
+                        <div className="prose prose-invert prose-p:text-neutral-300 prose-p:font-light prose-p:leading-relaxed">
+                            <ReactMarkdown>{parsedContent.executive}</ReactMarkdown>
+                        </div>
+                    </section>
+
+                    {/* Timeline Analysis */}
+                    <section id="chronological-analysis" className="scroll-mt-32">
+                        <h2 className="font-serif text-2xl mb-8 italic text-white border-b border-white/5 pb-2">Detailed Chronological Analysis</h2>
+                        <div className="space-y-0">
+                           {parsedContent.timelineSegments.map((segment, idx) => (
+                              <TimelineSegment key={idx} id={`segment-${idx}`} segment={segment} />
+                           ))}
+                        </div>
+                    </section>
+
+                    {/* Key Takeaways */}
+                    <section id="key-takeaways" className="scroll-mt-32">
+                        <h2 className="font-serif text-2xl mb-6 italic text-white border-b border-white/5 pb-2">Key Takeaways</h2>
+                        <div className="prose prose-invert prose-p:text-neutral-300 prose-strong:text-white">
+                            <ReactMarkdown
+                                components={{
+                                    ul: ({node, ...props}) => <ul className="space-y-4 list-none pl-0" {...props} />,
+                                    li: ({node, ...props}) => (
+                                        <li 
+                                            className="group pl-6 border-l-2 border-white/10 hover:border-accent hover:-translate-y-1 transition-all duration-300 py-2 hover:bg-white/5" 
+                                            {...props} 
+                                        />
+                                    )
+                                }}
+                            >
+                                {parsedContent.takeaways}
+                            </ReactMarkdown>
+                        </div>
+                    </section>
+                </div>
+            ) : (
+                // Fallback to standard full markdown rendering if parsing fails
+                <div className="prose prose-invert prose-headings:font-serif prose-headings:font-normal prose-h2:text-2xl prose-h2:mt-12 prose-h2:mb-6 prose-h2:italic prose-h3:font-mono prose-h3:text-sm prose-h3:uppercase prose-h3:tracking-widest prose-h3:text-accent prose-p:text-neutral-300 prose-p:font-light prose-p:leading-relaxed prose-strong:text-white prose-strong:font-normal prose-ul:list-none prose-ul:pl-0 prose-li:mb-4 prose-li:border-l prose-li:border-white/10 prose-li:pl-6 prose-li:text-neutral-400">
+                    <ReactMarkdown>{summary}</ReactMarkdown>
+                </div>
+            )}
         </div>
       </div>
     </div>

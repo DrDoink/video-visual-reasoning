@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Play } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface VideoPreviewProps {
   previewUrl: string;
@@ -10,13 +10,14 @@ interface VideoPreviewProps {
 const VideoPreview: React.FC<VideoPreviewProps> = ({ previewUrl, onClear, isLoading }) => {
   return (
     <div className="relative w-full bg-neutral-900 border border-neutral-800 group">
-      {/* Frame UI Elements */}
-      <div className="absolute top-2 left-2 z-20 font-mono text-[10px] text-white/50 bg-black/50 px-1">SRC_PREVIEW</div>
+      {/* Frame UI Elements - Pointer events none to allow clicks through to video */}
+      <div className="absolute top-2 left-2 z-20 font-mono text-[10px] text-white/50 bg-black/50 px-1 pointer-events-none">SRC_PREVIEW</div>
       
       <video
         src={previewUrl}
         controls
-        className={`w-full h-full object-contain max-h-[60vh] ${isLoading ? 'opacity-40 grayscale' : ''}`}
+        playsInline
+        className={`w-full h-full object-contain max-h-[60vh] transition-all duration-500 ${isLoading ? 'opacity-40 grayscale' : ''}`}
       />
       
       {!isLoading && (
@@ -30,7 +31,7 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({ previewUrl, onClear, isLoad
       )}
 
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center z-10">
+        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
           <div className="flex flex-col items-center justify-center gap-4">
              <div className="relative w-16 h-16 flex items-center justify-center">
                 <div className="absolute inset-0 border border-t-transparent border-accent/50 rounded-full animate-spin"></div>

@@ -1,11 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Header from './components/Header';
 import FileUploader from './components/FileUploader';
 import VideoPreview from './components/VideoPreview';
 import SummaryResult from './components/SummaryResult';
 import { VideoFile, ProcessingStatus } from './types';
 import { summarizeVideo } from './services/gemini';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle, RefreshCcw } from 'lucide-react';
 
 const App: React.FC = () => {
   const [video, setVideo] = useState<VideoFile | null>(null);
@@ -13,14 +13,47 @@ const App: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number>(0);
 
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  // Simulate progress based on status
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+
+    if (status === ProcessingStatus.PROCESSING_VIDEO) {
+      // Encoding phase: Fast ramp up to ~35%
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 35) return 35;
+          return prev + 2;
+        });
+      }, 100);
+    } else if (status === ProcessingStatus.ANALYZING) {
+      // Analysis phase: Slow ramp from wherever it is to ~95%
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 95) return 95;
+          // Decelerate as it gets closer to 95
+          const increment = Math.max(0.1, (95 - prev) / 100);
+          return prev + increment;
+        });
+      }, 100);
+    } else if (status === ProcessingStatus.COMPLETE) {
+      setProgress(100);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [status]);
 
   const handleFileSelect = (videoFile: VideoFile) => {
     setVideo(videoFile);
     setSummary(null);
     setError(null);
     setStatus(ProcessingStatus.IDLE);
+    setProgress(0);
   };
 
   const handleClearVideo = () => {
@@ -31,6 +64,7 @@ const App: React.FC = () => {
     setSummary(null);
     setError(null);
     setStatus(ProcessingStatus.IDLE);
+    setProgress(0);
   };
 
   const convertFileToBase64 = (file: File): Promise<string> => {
@@ -51,6 +85,7 @@ const App: React.FC = () => {
 
     try {
       setStatus(ProcessingStatus.PROCESSING_VIDEO);
+      setProgress(0);
       setStatusMessage('ENCODING_MEDIA_STREAM...');
       setError(null);
 
@@ -69,12 +104,13 @@ const App: React.FC = () => {
       
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
+      }, 500);
 
     } catch (err: any) {
       console.error(err);
       setStatus(ProcessingStatus.ERROR);
       setError(err.message || "FATAL_ERROR: ANALYSIS_INTERRUPTED");
+      setProgress(0);
     }
   };
 
@@ -141,29 +177,70 @@ const App: React.FC = () => {
 
                {/* Processing Indicator */}
                {(status === ProcessingStatus.PROCESSING_VIDEO || status === ProcessingStatus.ANALYZING) && (
-                  <div className="mt-8 border border-white/10 p-6 flex flex-col gap-4 bg-neutral-900/20">
-                     <div className="flex justify-between items-center font-mono text-[10px] text-accent uppercase tracking-widest">
-                        <span>Status</span>
-                        <span className="animate-pulse">Active</span>
+                  <div className="mt-8 border border-white/10 p-6 flex flex-col gap-4 bg-neutral-900/20 animate-in fade-in duration-500">
+                     <div className="flex justify-between items-end">
+                        <div className="flex flex-col gap-1">
+                           <span className="font-mono text-[10px] text-neutral-500 uppercase tracking-widest">Processing Status</span>
+                           <span className="font-mono text-xs text-accent uppercase tracking-widest animate-pulse">{statusMessage}</span>
+                        </div>
+                        <span className="font-mono text-2xl text-white font-light tracking-tighter">
+                           {Math.round(progress)}<span className="text-sm text-neutral-500 ml-1">%</span>
+                        </span>
                      </div>
-                     <p className="font-mono text-xs text-white">{statusMessage}</p>
-                     <div className="w-full bg-neutral-800 h-px">
-                        <div className="h-full bg-accent animate-progress origin-left"></div>
+                     
+                     <div className="w-full bg-neutral-800 h-1 overflow-hidden relative">
+                        <div 
+                           className="h-full bg-accent transition-all duration-300 ease-out relative"
+                           style={{ width: `${progress}%` }}
+                        >
+                           {/* Glow tip */}
+                           <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 bg-accent blur-[6px] opacity-50"></div>
+                           <div className="absolute right-0 top-0 bottom-0 w-px bg-white"></div>
+                        </div>
+                     </div>
+
+                     <div className="flex justify-between text-neutral-700 font-mono text-[8px] uppercase tracking-wider">
+                        <span>[ SYNCING_BUFFER ]</span>
+                        <span>[ ESTIMATING_LATENCY ]</span>
                      </div>
                   </div>
                )}
 
                {/* Error State */}
                {status === ProcessingStatus.ERROR && (
-                  <div className="mt-8 p-4 border border-red-900/50 bg-red-900/10 text-red-500 font-mono text-xs">
-                     <p className="uppercase tracking-widest mb-2">[ SYSTEM_FAILURE ]</p>
-                     <p>{error}</p>
-                     <button 
-                        onClick={handleGenerateSummary}
-                        className="mt-4 underline decoration-red-500 underline-offset-4 hover:text-white"
-                     >
-                        RETRY_OPERATION
-                     </button>
+                  <div className="mt-8 border-l-2 border-accent bg-neutral-900/30 p-6 animate-in fade-in duration-500">
+                     <div className="flex items-start gap-4">
+                        <div className="p-2 bg-accent/10 rounded-full shrink-0">
+                           <AlertTriangle className="text-accent" size={20} />
+                        </div>
+                        <div className="space-y-4 w-full">
+                           <div className="space-y-1">
+                              <h3 className="font-mono text-xs text-accent uppercase tracking-widest">
+                                 Analysis Interrupted
+                              </h3>
+                              <p className="font-sans text-sm text-neutral-300 font-light leading-relaxed">
+                                 We encountered an issue processing your video stream. This is often caused by network interruptions or unsupported codecs.
+                              </p>
+                              {error && (
+                                 <p className="font-mono text-[10px] text-neutral-500 mt-2 border-l border-white/10 pl-2">
+                                    ERR_LOG: {error}
+                                 </p>
+                              )}
+                           </div>
+                           
+                           <button 
+                              onClick={handleGenerateSummary}
+                              className="group flex items-center gap-3 text-white transition-colors"
+                           >
+                              <div className="flex items-center justify-center w-8 h-8 border border-neutral-700 group-hover:border-accent group-hover:bg-accent transition-all duration-300">
+                                 <RefreshCcw size={12} className="text-neutral-500 group-hover:text-black transition-colors" />
+                              </div>
+                              <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 group-hover:text-accent transition-colors">
+                                 Retry_Operation
+                              </span>
+                           </button>
+                        </div>
+                     </div>
                   </div>
                )}
             </div>

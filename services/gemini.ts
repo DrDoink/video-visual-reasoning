@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 
 // Initialize the client with the API key from environment variables
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -76,5 +76,102 @@ export const summarizeVideo = async (
   } catch (error: any) {
     console.error("Gemini API Error:", error);
     throw new Error(error.message || "Failed to generate summary");
+  }
+};
+
+/**
+ * Generates a thumbnail image based on a text description using Gemini 2.5 Flash Image.
+ */
+export const generateThumbnail = async (description: string): Promise<string | null> => {
+  try {
+    // Using gemini-2.5-flash-image for image generation
+    const modelId = 'gemini-2.5-flash-image';
+    
+    // Construct a prompt optimized for thumbnail generation
+    const prompt = `Generate a cinematic, high-quality, photorealistic keyframe image that represents this scene: ${description}`;
+
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: {
+        parts: [{ text: prompt }]
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: "16:9" // Standard video aspect ratio
+        }
+      }
+    });
+
+    // Extract the base64 image data from the response
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn("Failed to generate thumbnail:", error);
+    return null;
+  }
+};
+
+/**
+ * Generates a creative, fun audio review of the analysis.
+ * 1. Generates text using gemini-3-flash-preview.
+ * 2. Generates audio using gemini-2.5-flash-preview-tts.
+ */
+export const generateAudioReview = async (originalSummary: string): Promise<{ text: string; audioData: string }> => {
+  try {
+    // Step 1: Generate the creative text
+    const textModel = 'gemini-3-flash-preview';
+    const textPrompt = `
+      Based on the following video analysis, write a short, fun, weirdly detailed, and nuanced summary. 
+      Focus on specific visual oddities, awkward moments, or minute details that a normal summary might miss. 
+      Adopt a persona that is hyper-observant, enthusiastic, and slightly eccentric.
+      The summary will be read aloud, so make it conversational.
+      Keep it under 150 words.
+      
+      Original Analysis:
+      ${originalSummary}
+    `;
+
+    const textResponse = await ai.models.generateContent({
+      model: textModel,
+      contents: { parts: [{ text: textPrompt }] },
+    });
+
+    const creativeText = textResponse.text;
+    if (!creativeText) throw new Error("Failed to generate creative text");
+
+    // Step 2: Generate the audio
+    const ttsModel = 'gemini-2.5-flash-preview-tts';
+    const audioResponse = await ai.models.generateContent({
+      model: ttsModel,
+      contents: [{ parts: [{ text: creativeText }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            // Puck is a good voice for "fun and weirdly detailed"
+            prebuiltVoiceConfig: { voiceName: 'Puck' } 
+          },
+        },
+      },
+    });
+
+    const audioPart = audioResponse.candidates?.[0]?.content?.parts?.[0];
+    if (audioPart?.inlineData?.data) {
+      return {
+        text: creativeText,
+        audioData: audioPart.inlineData.data
+      };
+    } else {
+      throw new Error("No audio data received from TTS model");
+    }
+
+  } catch (error: any) {
+    console.error("Audio Generation Error:", error);
+    throw new Error("Failed to generate audio review");
   }
 };
