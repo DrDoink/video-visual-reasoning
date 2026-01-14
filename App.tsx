@@ -153,24 +153,24 @@ const App: React.FC = () => {
             <div className="space-y-8">
                 <div className="space-y-2">
                     <p className="font-mono text-xs text-accent uppercase tracking-[0.2em] mb-4">
-                        Machine Perception
+                        Computational Semiotics
                     </p>
                     <h2 className="font-serif text-5xl md:text-7xl leading-[0.9] text-white">
-                        From Static <br/>
-                        <span className="italic text-neutral-500">to</span> Meaning.
+                        Deconstructing <br/>
+                        <span className="italic text-neutral-500">your</span> Spectacle.
                     </h2>
                 </div>
                 <div className="max-w-md space-y-6">
                     <p className="font-light text-neutral-400 text-lg leading-relaxed">
-                        An <span className="text-white border-b border-accent/50 pb-0.5">automated curator</span> for your digital archives. 
-                        We employ multimodal AI to deconstruct video streams into structured narratives, 
-                        capturing the nuance of both audio and visual context.
+                        A <span className="text-white border-b border-accent/50 pb-0.5">hermeneutic engine</span> for the post-digital archive. 
+                        We employ multimodal AI to parse video streams into semantic narratives, 
+                        decoding the syntax of both audio and visual context.
                     </p>
                     
                     <div className="flex gap-4 font-mono text-[10px] uppercase text-neutral-600">
-                        <span>[ AUDIO_TRANSCRIPTION ]</span>
-                        <span>[ SCENE_RECOGNITION ]</span>
-                        <span>[ SEMANTIC_MAPPING ]</span>
+                        <span>[ AURAL_SIGNIFIERS ]</span>
+                        <span>[ VISUAL_SYNTAX ]</span>
+                        <span>[ NARRATIVE_STRUCTURE ]</span>
                     </div>
                 </div>
             </div>
